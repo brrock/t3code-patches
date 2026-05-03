@@ -1,0 +1,148 @@
+From 3e421de599466a091ad5c8c40879f10803b93afe Mon Sep 17 00:00:00 2001
+From: Codex <codex@example.invalid>
+Date: Sun, 3 May 2026 15:09:52 +0100
+Subject: [PATCH] feat: hide OpenCode sub-provider label in composer by default
+
+---
+ .../components/KeybindingsToast.browser.tsx    |  1 +
+ apps/web/src/components/chat/ChatComposer.tsx  |  3 +++
+ .../components/chat/ProviderModelPicker.tsx    | 18 +++++++++++++-----
+ .../src/components/chat/providerIconUtils.ts   | 17 +++++++++++++++++
+ packages/contracts/src/settings.ts             | 14 +++++++++++++-
+ 5 files changed, 47 insertions(+), 6 deletions(-)
+
+diff --git a/apps/web/src/components/KeybindingsToast.browser.tsx b/apps/web/src/components/KeybindingsToast.browser.tsx
+index c9d081b..b5a22bc 100644
+--- a/apps/web/src/components/KeybindingsToast.browser.tsx
++++ b/apps/web/src/components/KeybindingsToast.browser.tsx
+@@ -123,6 +123,7 @@ function createBaseServerConfig(): ServerConfig {
+           binaryPath: "",
+           serverUrl: "",
+           serverPassword: "",
++          showProviderComposer: false,
+           customModels: [],
+         },
+       },
+diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
+index 2b7f62e..36e0a9d 100644
+--- a/apps/web/src/components/chat/ChatComposer.tsx
++++ b/apps/web/src/components/chat/ChatComposer.tsx
+@@ -2006,6 +2006,9 @@ export const ChatComposer = memo(
+                     instanceEntries={providerInstanceEntries}
+                     keybindings={keybindings}
+                     modelOptionsByInstance={modelOptionsByInstance}
++                    showOpenCodeProviderComposer={
++                      settings.providers.opencode.showProviderComposer
++                    }
+                     terminalOpen={terminalOpen}
+                     open={isComposerModelPickerOpen}
+                     {...(composerProviderState.modelPickerIconClassName
+diff --git a/apps/web/src/components/chat/ProviderModelPicker.tsx b/apps/web/src/components/chat/ProviderModelPicker.tsx
+index 4a2860e..e8ed784 100644
+--- a/apps/web/src/components/chat/ProviderModelPicker.tsx
++++ b/apps/web/src/components/chat/ProviderModelPicker.tsx
+@@ -14,8 +14,7 @@ import { ModelPickerContent } from "./ModelPickerContent";
+ import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+ import {
+   ModelEsque,
+-  getTriggerDisplayModelLabel,
+-  getTriggerDisplayModelName,
++  getTriggerDisplayParts,
+ } from "./providerIconUtils";
+ import { setModelPickerOpen } from "../../modelPickerOpenState";
+ import type { ProviderInstanceEntry } from "../../providerInstances";
+@@ -40,6 +39,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+   open?: boolean;
+   triggerVariant?: VariantProps<typeof buttonVariants>["variant"];
+   triggerClassName?: string;
++  showOpenCodeProviderComposer?: boolean;
+   onOpenChange?: (open: boolean) => void;
+   onInstanceModelChange: (instanceId: ProviderInstanceId, model: string) => void;
+ }) {
+@@ -64,9 +64,17 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
+   const selectedModel =
+     selectedInstanceOptions.find((option) => option.slug === props.model) ??
+     selectedInstanceOptions[0];
+-  const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
+-  const triggerSubtitle = selectedModel?.subProvider;
+-  const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
++  const triggerDisplayParts = selectedModel
++    ? getTriggerDisplayParts(selectedModel, {
++        showSubProvider:
++          activeEntry?.driverKind === ProviderDriverKind.make("opencode")
++            ? props.showOpenCodeProviderComposer
++            : true,
++      })
++    : { title: props.model, label: props.model };
++  const triggerTitle = triggerDisplayParts.title;
++  const triggerSubtitle = triggerDisplayParts.subtitle;
++  const triggerLabel = triggerDisplayParts.label;
+   const duplicateDriverCount = props.instanceEntries.filter(
+     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
+   ).length;
+diff --git a/apps/web/src/components/chat/providerIconUtils.ts b/apps/web/src/components/chat/providerIconUtils.ts
+index 88b5629..b35f2de 100644
+--- a/apps/web/src/components/chat/providerIconUtils.ts
++++ b/apps/web/src/components/chat/providerIconUtils.ts
+@@ -45,3 +45,20 @@ export function getTriggerDisplayModelLabel(model: ModelEsque): string {
+   const title = getTriggerDisplayModelName(model);
+   return model.subProvider ? `${model.subProvider} · ${title}` : title;
+ }
++
++export function getTriggerDisplayParts(
++  model: ModelEsque,
++  options?: { showSubProvider?: boolean | undefined },
++): {
++  title: string;
++  subtitle?: string | undefined;
++  label: string;
++} {
++  const title = getTriggerDisplayModelName(model);
++  const subtitle = options?.showSubProvider === false ? undefined : model.subProvider;
++  return {
++    title,
++    ...(subtitle ? { subtitle } : {}),
++    label: subtitle ? `${subtitle} · ${title}` : title,
++  };
++}
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index 087b031..c737c8a 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -301,13 +301,24 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
+         },
+       }),
+     ),
++    showProviderComposer: Schema.Boolean.pipe(
++      Schema.withDecodingDefault(Effect.succeed(false)),
++      Schema.annotateKey({
++        title: "Show provider in model name in composer",
++        description:
++          'Prefix composer model names with the upstream provider (for example "Anthropic · Claude Sonnet 4.5").',
++        providerSettingsForm: {
++          control: "switch",
++        },
++      }),
++    ),
+     customModels: Schema.Array(Schema.String).pipe(
+       Schema.withDecodingDefault(Effect.succeed([])),
+       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
+     ),
+   },
+   {
+-    order: ["binaryPath", "serverUrl", "serverPassword"],
++    order: ["binaryPath", "serverUrl", "serverPassword", "showProviderComposer"],
+   },
+ );
+ export type OpenCodeSettings = typeof OpenCodeSettings.Type;
+@@ -416,6 +427,7 @@ const OpenCodeSettingsPatch = Schema.Struct({
+   binaryPath: Schema.optionalKey(Schema.String),
+   serverUrl: Schema.optionalKey(Schema.String),
+   serverPassword: Schema.optionalKey(Schema.String),
++  showProviderComposer: Schema.optionalKey(Schema.Boolean),
+   customModels: Schema.optionalKey(Schema.Array(Schema.String)),
+ });
+ 
+-- 
+2.50.1 (Apple Git-155)
+

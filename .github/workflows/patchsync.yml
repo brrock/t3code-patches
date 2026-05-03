@@ -1,0 +1,35 @@
+name: PatchSync Stable
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  patchsync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: brrock/patchsync@v1
+        id: patchsync
+        with:
+          config: patchsync.config.json
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PATCHSYNC_CODEX_AUTH_JSON: ${{ secrets.PATCHSYNC_CODEX_AUTH_JSON }}
+          PATCHSYNC_OPENCODE_AUTH_JSON: ${{ secrets.PATCHSYNC_OPENCODE_AUTH_JSON }}
+
+      - uses: actions/upload-artifact@v4
+        if: steps.patchsync.outputs.release-built == 'true'
+        with:
+          name: patchsync-stable-artifacts
+          path: ${{ steps.patchsync.outputs.artifact-paths }}
