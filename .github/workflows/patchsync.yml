@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: brrock/patchsync@v1
+      - uses: brrock/patchsync@main
         id: patchsync
         with:
           config: patchsync.config.json
